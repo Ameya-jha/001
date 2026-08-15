@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>Chat with Claude</title>
+<title>Universal AI Chat</title>
 <style>
   :root {
     --bg: #0e0e10;
@@ -10,7 +10,7 @@
     --border: #2a2a2e;
     --text: #eaeaea;
     --muted: #8a8a90;
-    --accent: #d97757;
+    --accent: #76b900; /* nvidia green default vibe, change if you want */
   }
   * { box-sizing: border-box; }
   body {
@@ -22,35 +22,47 @@
     justify-content: center;
     padding: 40px 16px;
   }
-  .app {
-    width: 100%;
-    max-width: 640px;
-  }
-  h1 {
-    font-size: 1.1rem;
-    font-weight: 600;
-    margin-bottom: 4px;
-  }
-  .sub {
-    color: var(--muted);
-    font-size: 0.85rem;
-    margin-bottom: 20px;
-  }
-  #apiKey {
-    width: 100%;
-    padding: 10px 12px;
+  .app { width: 100%; max-width: 640px; }
+  h1 { font-size: 1.1rem; font-weight: 600; margin-bottom: 4px; }
+  .sub { color: var(--muted); font-size: 0.85rem; margin-bottom: 20px; }
+
+  .config {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
     margin-bottom: 16px;
+  }
+  .config input {
+    padding: 10px 12px;
     background: var(--panel);
     border: 1px solid var(--border);
     border-radius: 8px;
     color: var(--text);
-    font-size: 0.85rem;
+    font-size: 0.82rem;
+    width: 100%;
   }
+  .config .full { grid-column: 1 / -1; }
+
+  .limits {
+    font-size: 0.78rem;
+    color: var(--muted);
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 8px 12px;
+    margin-bottom: 16px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px 16px;
+  }
+  .limits b { color: var(--text); }
+  .limits .warn { color: var(--accent); }
+
   #messages {
     background: var(--panel);
     border: 1px solid var(--border);
     border-radius: 12px;
-    height: 420px;
+    height: 380px;
     overflow-y: auto;
     padding: 16px;
     display: flex;
@@ -58,7 +70,7 @@
     gap: 12px;
   }
   .msg { max-width: 85%; padding: 10px 14px; border-radius: 10px; line-height: 1.4; font-size: 0.92rem; white-space: pre-wrap; }
-  .user { align-self: flex-end; background: var(--accent); color: #fff; }
+  .user { align-self: flex-end; background: var(--accent); color: #0e0e10; font-weight: 500; }
   .assistant { align-self: flex-start; background: #232326; color: var(--text); }
   .form-row { display: flex; gap: 8px; margin-top: 12px; }
   #input {
@@ -75,32 +87,25 @@
     background: var(--accent);
     border: none;
     border-radius: 8px;
-    color: #fff;
+    color: #0e0e10;
     font-weight: 600;
     cursor: pointer;
   }
   button:disabled { opacity: 0.5; cursor: not-allowed; }
-  .limits {
-    font-size: 0.78rem;
-    color: var(--muted);
-    background: var(--panel);
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    padding: 8px 12px;
-    margin-bottom: 16px;
-    display: flex;
-    flex-wrap: wrap;
-    gap: 4px 16px;
-  }
-  .limits b { color: var(--text); }
-  .limits .warn { color: var(--accent); }
 </style>
 </head>
 <body>
 <div class="app">
-  <h1>Chat with Claude</h1>
-  <div class="sub">Paste your Anthropic API key below (kept only in this browser tab).</div>
-  <input id="apiKey" type="password" placeholder="sk-ant-..." />
+  <h1>Universal AI Chat</h1>
+  <div class="sub">Works with any OpenAI-compatible API — NVIDIA NIM, OpenAI, Groq, Together, etc.</div>
+
+  <div class="config">
+    <input id="baseUrl" class="full" type="text"
+      value="https://integrate.api.nvidia.com/v1/chat/completions"
+      placeholder="API endpoint URL" />
+    <input id="apiKey" type="password" placeholder="API key (nvapi-...)" />
+    <input id="model" type="text" placeholder="Model name" value="meta/llama-3.1-8b-instruct" />
+  </div>
 
   <div id="limits" class="limits">No requests sent yet.</div>
 
@@ -117,6 +122,9 @@
   const inputEl = document.getElementById("input");
   const sendBtn = document.getElementById("sendBtn");
   const apiKeyEl = document.getElementById("apiKey");
+  const baseUrlEl = document.getElementById("baseUrl");
+  const modelEl = document.getElementById("model");
+  const limitsEl = document.getElementById("limits");
 
   let history = [];
 
@@ -129,38 +137,46 @@
     return div;
   }
 
-  const limitsEl = document.getElementById("limits");
-
   function updateLimits(headers) {
-    const reqLimit = headers.get("anthropic-ratelimit-requests-limit");
-    const reqRemaining = headers.get("anthropic-ratelimit-requests-remaining");
-    const reqReset = headers.get("anthropic-ratelimit-requests-reset");
-    const tokLimit = headers.get("anthropic-ratelimit-tokens-limit");
-    const tokRemaining = headers.get("anthropic-ratelimit-tokens-remaining");
+    // Different providers use different header names, so we check a few known ones.
+    const candidates = [
+      ["x-ratelimit-remaining-requests", "x-ratelimit-limit-requests", "requests"],
+      ["x-ratelimit-remaining-tokens", "x-ratelimit-limit-tokens", "tokens"],
+      ["anthropic-ratelimit-requests-remaining", "anthropic-ratelimit-requests-limit", "requests"],
+      ["anthropic-ratelimit-tokens-remaining", "anthropic-ratelimit-tokens-limit", "tokens"]
+    ];
 
-    if (!reqLimit && !tokLimit) {
-      limitsEl.innerHTML =
-        "Rate limit headers not visible from the browser (blocked by CORS on this endpoint). " +
-        "This only works reliably when called from a backend.";
-      return;
+    let found = [];
+    for (const [remKey, limKey, label] of candidates) {
+      const rem = headers.get(remKey);
+      const lim = headers.get(limKey);
+      if (rem !== null || lim !== null) {
+        const lowClass = rem && lim && (rem / lim) < 0.2 ? "warn" : "";
+        found.push(`<span class="${lowClass}">${label} left: <b>${rem ?? "?"}</b> / ${lim ?? "?"}</span>`);
+      }
     }
 
-    const reqLowClass = reqRemaining && reqLimit && (reqRemaining / reqLimit) < 0.2 ? "warn" : "";
-    const tokLowClass = tokRemaining && tokLimit && (tokRemaining / tokLimit) < 0.2 ? "warn" : "";
+    const resetReq = headers.get("x-ratelimit-reset-requests") || headers.get("anthropic-ratelimit-requests-reset");
+    if (resetReq) found.push(`<span>Resets: <b>${resetReq}</b></span>`);
 
-    limitsEl.innerHTML = `
-      <span class="${reqLowClass}">Requests left: <b>${reqRemaining ?? "?"}</b> / ${reqLimit ?? "?"}</span>
-      <span class="${tokLowClass}">Tokens left: <b>${tokRemaining ?? "?"}</b> / ${tokLimit ?? "?"}</span>
-      ${reqReset ? `<span>Resets: <b>${new Date(reqReset).toLocaleTimeString()}</b></span>` : ""}
-    `;
+    if (found.length === 0) {
+      limitsEl.innerHTML =
+        "No rate-limit headers exposed by this API/browser (often blocked by CORS). " +
+        "Check your provider's dashboard for usage instead.";
+    } else {
+      limitsEl.innerHTML = found.join(" ");
+    }
   }
 
   async function sendMessage() {
     const text = inputEl.value.trim();
     const apiKey = apiKeyEl.value.trim();
+    const baseUrl = baseUrlEl.value.trim();
+    const model = modelEl.value.trim();
+
     if (!text) return;
-    if (!apiKey) {
-      alert("Enter your Anthropic API key first.");
+    if (!apiKey || !baseUrl || !model) {
+      alert("Fill in the endpoint URL, API key, and model name first.");
       return;
     }
 
@@ -171,18 +187,17 @@
     const loadingMsg = addMessage("assistant", "...");
 
     try {
-      const response = await fetch("https://api.anthropic.com/v1/messages", {
+      const response = await fetch(baseUrl, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "x-api-key": apiKey,
-          "anthropic-version": "2023-06-01",
-          "anthropic-dangerous-direct-browser-access": "true"
+          "Authorization": "Bearer " + apiKey
         },
         body: JSON.stringify({
-          model: "claude-sonnet-4-6",
+          model: model,
+          messages: history,
           max_tokens: 1000,
-          messages: history
+          stream: false
         })
       });
 
@@ -190,10 +205,14 @@
 
       const data = await response.json();
 
-      if (data.error) {
-        loadingMsg.textContent = "Error: " + data.error.message;
+      if (!response.ok) {
+        const errMsg = data.error?.message || data.message || JSON.stringify(data);
+        loadingMsg.textContent = "Error: " + errMsg;
       } else {
-        const reply = data.content[0].text;
+        // OpenAI-compatible shape (used by NVIDIA NIM too)
+        const reply = data.choices?.[0]?.message?.content
+          ?? data.content?.[0]?.text // fallback for Anthropic-shaped responses
+          ?? "No response content found.";
         loadingMsg.textContent = reply;
         history.push({ role: "assistant", content: reply });
       }
