@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Face tracker</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@400;600;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <main class="app">
+    <header class="head">
+      <h1>Face tracker</h1>
+      <p>Tracks your face with your webcam. Video is processed on this device and never uploaded.</p>
+    </header>
+
+    <section class="stage" id="stage">
+      <video id="video" playsinline muted></video>
+      <canvas id="overlay"></canvas>
+      <div class="placeholder" id="placeholder">
+        <p id="message">Camera is off</p>
+      </div>
+      <div class="chips">
+        <span class="chip" id="faceCount">0 faces</span>
+        <span class="chip" id="fps">0 fps</span>
+      </div>
+    </section>
+
+    <aside class="panel">
+      <button class="primary" id="toggleBtn">Start camera</button>
+
+      <fieldset>
+        <legend>Overlay</legend>
+        <label><input type="checkbox" id="optMesh" checked> Face mesh</label>
+        <label><input type="checkbox" id="optOutline" checked> Eyes, brows, lips</label>
+        <label><input type="checkbox" id="optBox" checked> Bounding box</label>
+        <label><input type="checkbox" id="optMirror" checked> Mirror view</label>
+        <label class="select">Faces to track
+          <select id="optFaces">
+            <option value="1" selected>1</option>
+            <option value="2">2</option>
+            <option value="4">4</option>
+          </select>
+        </label>
+      </fieldset>
+
+      <fieldset>
+        <legend>Readouts (first face)</legend>
+        <div class="meter"><span>Smile</span><div class="track"><i id="mSmile"></i></div><b id="vSmile">0%</b></div>
+        <div class="meter"><span>Mouth open</span><div class="track"><i id="mMouth"></i></div><b id="vMouth">0%</b></div>
+        <div class="meter"><span>Head turn</span><div class="track centered"><i id="mTurn"></i></div><b id="vTurn">0</b></div>
+        <div class="meter"><span>Head tilt</span><div class="track centered"><i id="mTilt"></i></div><b id="vTilt">0&deg;</b></div>
+        <div class="meter"><span>Blinks</span><div class="track"></div><b id="vBlink">0</b></div>
+      </fieldset>
+    </aside>
+  </main>
+
+  <script src="script.js"></script>
+</body>
+</html>
